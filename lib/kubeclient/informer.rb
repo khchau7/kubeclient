@@ -1,14 +1,16 @@
 module Kubeclient
   # caches results for multiple consumers to share and keeps them updated with a watch
   class Informer
-    def initialize(client, resource_name, reconcile_timeout: 15 * 60, logger: nil)
+    def initialize(client, resource_name, reconcile_timeout: 15 * 60, logger: nil, limit: nil, show_managed_fields: false)
       @client = client
       @resource_name = resource_name
       @reconcile_timeout = reconcile_timeout
       @logger = logger
-      @cache = nil
+      @cache = {}
       @started = nil
       @watching = []
+      @limit = limit
+      @show_managed_fields = @show_managed_fields
     end
 
     def list
@@ -57,11 +59,46 @@ module Kubeclient
     end
 
     def fill_cache
-      reply = @client.get_entities(nil, @resource_name, raw: true, resource_version: '0')
-      @cache = reply[:items].each_with_object({}) do |item, h|
-        h[cache_key(item)] = item
+      reply = nil
+      continuationToken = nil
+      reply = @client.get_entities(nil, @resource_name, limit: @limit, raw: true)
+      if reply.nil? || reply.empty?
+        @logger&.error("received reply as nil or empty")
+      elsif reply[:items].nil? || reply[:items].empty?
+        @logger&.error("received reply items as nil or empty")
+      else
+        reply[:items].each_with_object({}) do |item|
+          if !@show_managed_fields
+            if !item[:metadata].nil? && !item[:metadata].empty? &&
+              !item[:metadata][:managedFields].nil? &&
+              !item[:metadata][:managedFields].empty?
+              item[:metadata][:managedFields] = nil
+            end
+          end
+          @cache[cache_key(item)] = item
+        end
+        @started = reply.dig(:metadata, :resourceVersion)
+        @logger&.info("resourceVersion: #{@started}")
+        continuationToken = reply.dig(:metadata, :continue)
+        while (!continuationToken.nil? && !continuationToken.empty?)
+          reply = @client.get_entities(nil, @resource_name, limit: @limit, continue: continuationToken, raw: true)
+          if reply.nil? || reply.empty?
+          elsif reply[:items].nil? || reply[:items].empty?
+          else
+            continuationToken = reply.dig(:metadata, :continue)
+            reply[:items].each_with_object({}) do |item|
+              if !@show_managed_fields
+                if !item[:metadata].nil? && !item[:metadata].empty? &&
+                  !item[:metadata][:managedFields].nil? &&
+                  !item[:metadata][:managedFields].empty?
+                  item[:metadata][:managedFields] = nil
+                end
+              end
+              @cache[cache_key(item)] = item
+            end
+          end
+        end
       end
-      @started = reply.dig(:metadata, :resourceVersion)
     end
 
     def watch_to_update_cache
