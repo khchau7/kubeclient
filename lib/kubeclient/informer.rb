@@ -114,8 +114,18 @@ module Kubeclient
 
       watcher.each do |notice|
         case notice[:type]
-        when 'ADDED', 'MODIFIED' then @cache[cache_key(notice[:object])] = notice[:object]
-        when 'DELETED' then @cache.delete(cache_key(notice[:object]))
+        when 'ADDED', 'MODIFIED' then
+          item = notice[:object]
+          if !@show_managed_fields
+            if !item[:metadata].nil? && !item[:metadata].empty? &&
+              !item[:metadata][:managedFields].nil? &&
+              !item[:metadata][:managedFields].empty?
+              item[:metadata][:managedFields] = nil
+            end
+          end
+          @cache[cache_key(item)] = item
+        when 'DELETED' then
+          @cache.delete(cache_key(notice[:object]))
         when 'ERROR'
           stop_reason = 'error'
           break
