@@ -55,43 +55,43 @@ module Kubeclient
     end
 
     def cache_key(resource)
-      resource.dig(:metadata, :uid)
+      resource["metadata"]["uid"]
     end
 
     def fill_cache
       reply = nil
       continuationToken = nil
-      reply = @client.get_entities(nil, @resource_name, limit: @limit, raw: true)
+      reply = @client.get_entities(nil, @resource_name, limit: @limit)
       if reply.nil? || reply.empty?
         @logger&.error("received reply as nil or empty")
-      elsif reply[:items].nil? || reply[:items].empty?
-        @logger&.error("received reply items as nil or empty")
+      elsif reply["items"].nil? || reply["items"].empty?
+        @logger&.error("received reply items as nil or empty for get_entities")
       else
-        reply[:items].each_with_object({}) do |item|
+        reply["items"].each_with_object({}) do |item|
           if !@show_managed_fields
-            if !item[:metadata].nil? && !item[:metadata].empty? &&
-              !item[:metadata][:managedFields].nil? &&
-              !item[:metadata][:managedFields].empty?
-              item[:metadata][:managedFields] = nil
+            if !item["metadata"].nil? && !item["metadata"].empty? &&
+              !item["metadata"]["managedFields"].nil? &&
+              !item["metadata"]["managedFields"].empty?
+              item["metadata"]["managedFields"] = {}
             end
           end
           @cache[cache_key(item)] = item
         end
-        @started = reply.dig(:metadata, :resourceVersion)
+        @started = reply["metadata"]["resourceVersion"]
         @logger&.info("resourceVersion: #{@started}")
-        continuationToken = reply.dig(:metadata, :continue)
+        continuationToken = reply["metadata"]["continue"]
         while (!continuationToken.nil? && !continuationToken.empty?)
-          reply = @client.get_entities(nil, @resource_name, limit: @limit, continue: continuationToken, raw: true)
+          reply = @client.get_entities(nil, @resource_name, limit: @limit, continue: continuationToken)
           if reply.nil? || reply.empty?
-          elsif reply[:items].nil? || reply[:items].empty?
+          elsif reply["items"].nil? || reply["items"].empty?
           else
-            continuationToken = reply.dig(:metadata, :continue)
-            reply[:items].each_with_object({}) do |item|
+            continuationToken =  reply["metadata"]["continue"]
+            reply["items"].each_with_object({}) do |item|
               if !@show_managed_fields
-                if !item[:metadata].nil? && !item[:metadata].empty? &&
-                  !item[:metadata][:managedFields].nil? &&
-                  !item[:metadata][:managedFields].empty?
-                  item[:metadata][:managedFields] = nil
+                if !item["metadata"].nil? && !item["metadata"].empty? &&
+                  !item["metadata"]["managedFields"].nil? &&
+                  !item["metadata"]["managedFields"].empty?
+                  item["metadata"]["managedFields"] = {}
                 end
               end
               @cache[cache_key(item)] = item
@@ -113,24 +113,25 @@ module Kubeclient
       end
 
       watcher.each do |notice|
-        case notice[:type]
+        case notice["type"]
         when 'ADDED', 'MODIFIED' then
-          item = notice[:object]
+          item = notice["object"]
           if !@show_managed_fields
-            if !item[:metadata].nil? && !item[:metadata].empty? &&
-              !item[:metadata][:managedFields].nil? &&
-              !item[:metadata][:managedFields].empty?
-              item[:metadata][:managedFields] = nil
+            if !item["metadata"].nil? && !item["metadata"].empty? &&
+              !item["metadata"]["managedFields"].nil? &&
+              !item["metadata"]["managedFields"].empty?
+              item["metadata"]["managedFields"] = {}
             end
           end
+          @logger&.info("Received event object #{item}")
           @cache[cache_key(item)] = item
         when 'DELETED' then
-          @cache.delete(cache_key(notice[:object]))
+          @cache.delete(cache_key(notice["object"]))
         when 'ERROR'
           stop_reason = 'error'
           break
         else
-          @logger&.error("Unsupported event type #{notice[:type]}")
+          @logger&.error("Unsupported event type #{notice["type"]}")
         end
         @watching.each { |q| q << notice }
       end
