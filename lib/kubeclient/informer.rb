@@ -116,56 +116,66 @@ module Kubeclient
     end
 
     def getOptimizedItem(resourceItem)
-      Item = {}
-      if !resourceItem["kind"].nil? && resourceItem["kind"] == "Pod"
-        Item["apiVersion"] = resourceItem["apiVersion"]
-        Item["kind"] =  resourceItem["kind"]
-        Item["metadata"] =  {}
+      item = {}
+      # @logger&.info("getOptimizedItem:start")
+      # @logger&.info("getOptimizedItem: #{resourceItem}")
+      # if !resourceItem["kind"].nil? && resourceItem["kind"] == "Pod"
+      # if !resourceItem["kind"].nil?
+        # @logger&.info("getOptimizedItem:before-metadata")
+        # item["apiVersion"] = resourceItem["apiVersion"]
+        # item["kind"] =  resourceItem["kind"]
+        item["metadata"] =  {}
         if !resourceItem["metadata"].nil? && !resourceItem["metadata"].empty?
-              Item["metadata"]["annotations"] = {}
+              item["metadata"]["annotations"] = {}
               if !resourceItem["metadata"]["annotations"].nil? && !resourceItem["metadata"]["annotations"].empty?
-                Item["metadata"]["annotations"] =  resourceItem["metadata"]["annotations"]
+                item["metadata"]["annotations"] =  resourceItem["metadata"]["annotations"]
               end
-              Item["metadata"]["labels"] = {}
+              # @logger&.info("getOptimizedItem:after-annotations")
+              item["metadata"]["labels"] = {}
               if !resourceItem["metadata"]["labels"].nil? && !resourceItem["metadata"]["labels"].empty?
-                Item["metadata"]["labels"] =  resourceItem["metadata"]["labels"]
+                item["metadata"]["labels"] =  resourceItem["metadata"]["labels"]
               end
-              Item["metadta"]["ownerReferences"] = {}
+              # @logger&.info("getOptimizedItem:after-labels")
+              item["metadata"]["ownerReferences"] = {}
               if !resourceItem["metadata"]["ownerReferences"].nil? && !resourceItem["metadata"]["ownerReferences"].empty?
                 # TODO - can be further optimized
-                Item["metadata"]["ownerReferences"] =  resourceItem["metadata"]["ownerReferences"]
+                item["metadata"]["ownerReferences"] =  resourceItem["metadata"]["ownerReferences"]
               end
-              Item["metadata"]["name"] =  resourceItem["metadata"]["name"]
-              Item["metadata"]["namespace"] =  resourceItem["metadata"]["namespace"]
-              Item["metadata"]["resourceVersion"] =  resourceItem["metadata"]["resourceVersion"]
-              Item["metadata"]["uid"] =  resourceItem["metadata"]["uid"]
-              Item["metadata"]["creationTimestamp"] =  resourceItem["metadata"]["creationTimestamp"]
+              # @logger&.info("getOptimizedItem:after-ownerReferences")
+              item["metadata"]["name"] =  resourceItem["metadata"]["name"]
+              item["metadata"]["namespace"] =  resourceItem["metadata"]["namespace"]
+              item["metadata"]["resourceVersion"] =  resourceItem["metadata"]["resourceVersion"]
+              item["metadata"]["uid"] =  resourceItem["metadata"]["uid"]
+              item["metadata"]["creationTimestamp"] =  resourceItem["metadata"]["creationTimestamp"]
+              # @logger&.info("getOptimizedItem:end-metadata")
         end
-        Item["spec"] =  {}
+        # @logger&.info("getOptimizedItem:inside-spec")
+        item["spec"] =  {}
         if !resourceItem["spec"].nil? && !resourceItem["spec"].empty?
-          Item["spec"]["containers"] =  []
+          item["spec"]["containers"] =  []
           if  !resourceItem["spec"]["containers"].nil? && !resourceItem["spec"]["containers"].empty?
             resourceItem["spec"]["containers"].each do | container|
               currentContainer = {}
               currentContainer["name"] = container["name"]
               currentContainer["resources"] = container["resources"]
-              Item["spec"]["containers"].push(currentContainer)
+              item["spec"]["containers"].push(currentContainer)
             end
           end
-          Item["spec"]["nodeName"] = ""
+          item["spec"]["nodeName"] = ""
           if !resourceItem["spec"]["nodeName"].nil? && !resourceItem["spec"]["nodeName"].empty?
-            Item["spec"]["nodeName"] = resourceItem["spec"]["nodeName"]
+            item["spec"]["nodeName"] = resourceItem["spec"]["nodeName"]
           end
         end
-        Item["status"] =  {}
+        item["status"] =  {}
+        # @logger&.info("getOptimizedItem:inside-status")
         if !resourceItem["status"].nil? && !resourceItem["status"].empty?
           # TODO - can be further optimized
-          Item["status"] =  resourceItem["status"]
+          item["status"] =  resourceItem["status"]
         end
-
-       return Item
-      end
-      return resourceItem
+      return item
+      # end
+      # @logger&.info("getOptimizedItem:end")
+      # return resourceItem
     end
   end
 end
