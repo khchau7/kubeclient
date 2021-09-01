@@ -117,43 +117,36 @@ module Kubeclient
 
     def getOptimizedItem(resourceItem)
       item = {}
-      # @logger&.info("getOptimizedItem:start")
-      # @logger&.info("getOptimizedItem: #{resourceItem}")
       # if !resourceItem["kind"].nil? && resourceItem["kind"] == "Pod"
       # if !resourceItem["kind"].nil?
         # @logger&.info("getOptimizedItem:before-metadata")
         # item["apiVersion"] = resourceItem["apiVersion"]
         # item["kind"] =  resourceItem["kind"]
         item["metadata"] =  {}
-        if !resourceItem["metadata"].nil? && !resourceItem["metadata"].empty?
-              item["metadata"]["annotations"] = {}
-              if !resourceItem["metadata"]["annotations"].nil? && !resourceItem["metadata"]["annotations"].empty?
+        if !resourceItem["metadata"].nil?
+              if !resourceItem["metadata"]["annotations"].nil?
                 item["metadata"]["annotations"] =  resourceItem["metadata"]["annotations"]
               end
-              # @logger&.info("getOptimizedItem:after-annotations")
-              item["metadata"]["labels"] = {}
-              if !resourceItem["metadata"]["labels"].nil? && !resourceItem["metadata"]["labels"].empty?
+              if !resourceItem["metadata"]["labels"].nil?
                 item["metadata"]["labels"] =  resourceItem["metadata"]["labels"]
               end
-              # @logger&.info("getOptimizedItem:after-labels")
-              item["metadata"]["ownerReferences"] = {}
-              if !resourceItem["metadata"]["ownerReferences"].nil? && !resourceItem["metadata"]["ownerReferences"].empty?
+              if !resourceItem["metadata"]["ownerReferences"].nil?
                 # TODO - can be further optimized
                 item["metadata"]["ownerReferences"] =  resourceItem["metadata"]["ownerReferences"]
               end
-              # @logger&.info("getOptimizedItem:after-ownerReferences")
               item["metadata"]["name"] =  resourceItem["metadata"]["name"]
               item["metadata"]["namespace"] =  resourceItem["metadata"]["namespace"]
               item["metadata"]["resourceVersion"] =  resourceItem["metadata"]["resourceVersion"]
               item["metadata"]["uid"] =  resourceItem["metadata"]["uid"]
               item["metadata"]["creationTimestamp"] =  resourceItem["metadata"]["creationTimestamp"]
-              # @logger&.info("getOptimizedItem:end-metadata")
+              if !resourceItem["metadata"]["deletionTimestamp"].nil?
+                item["metadata"]["deletionTimestamp"] = resourceItem["metadata"]["deletionTimestamp"]
+              end
         end
-        # @logger&.info("getOptimizedItem:inside-spec")
         item["spec"] =  {}
-        if !resourceItem["spec"].nil? && !resourceItem["spec"].empty?
+        if !resourceItem["spec"].nil?
           item["spec"]["containers"] =  []
-          if  !resourceItem["spec"]["containers"].nil? && !resourceItem["spec"]["containers"].empty?
+          if  !resourceItem["spec"]["containers"].nil?
             resourceItem["spec"]["containers"].each do | container|
               currentContainer = {}
               currentContainer["name"] = container["name"]
@@ -162,13 +155,12 @@ module Kubeclient
             end
           end
           item["spec"]["nodeName"] = ""
-          if !resourceItem["spec"]["nodeName"].nil? && !resourceItem["spec"]["nodeName"].empty?
+          if !resourceItem["spec"]["nodeName"].nil?
             item["spec"]["nodeName"] = resourceItem["spec"]["nodeName"]
           end
         end
         item["status"] =  {}
-        # @logger&.info("getOptimizedItem:inside-status")
-        if !resourceItem["status"].nil? && !resourceItem["status"].empty?
+        if !resourceItem["status"].nil?
           # TODO - can be further optimized
           item["status"] =  resourceItem["status"]
         end
