@@ -1,7 +1,7 @@
 module Kubeclient
   # caches results for multiple consumers to share and keeps them updated with a watch
   class Informer
-    def initialize(client, resource_name, reconcile_timeout: 15 * 60, logger: nil, limit: nil)
+    def initialize(client, resource_name, reconcile_timeout: 15 * 60, logger: nil, limit: nil, show_managed_fields: false)
       @client = client
       @resource_name = resource_name
       @reconcile_timeout = reconcile_timeout
@@ -10,6 +10,7 @@ module Kubeclient
       @started = nil
       @watching = []
       @limit = limit
+      @show_managed_fields = @show_managed_fields
     end
 
     def list
@@ -24,12 +25,14 @@ module Kubeclient
     def start_worker
       @worker = Thread.new do
         loop do
+          @logger&.info("start_worker: starting fill cache and watch update cache")
           fill_cache
           watch_to_update_cache
         rescue StandardError => e
           # need to keep retrying since we work in the background
           @logger&.error("ignoring error during background work #{e}")
         ensure
+          @logger&.info("start_worker: about to sleep for a second")
           sleep(1) # do not overwhelm the api-server if we are somehow broken
         end
       end
@@ -54,32 +57,46 @@ module Kubeclient
     end
 
     def cache_key(resource)
-      resource["metadata"]["uid"]
+      resource.dig(:metadata, :uid)
     end
 
     def fill_cache
       reply = nil
       continuationToken = nil
-      reply = @client.get_entities(nil, @resource_name, limit: @limit)
+      reply = @client.get_entities(nil, @resource_name, limit: @limit, raw: true)
       if reply.nil? || reply.empty?
         @logger&.error("received reply as nil or empty")
-      elsif reply["items"].nil? || reply["items"].empty?
-        @logger&.error("received reply items as nil or empty for get_entities")
+      elsif reply[:items].nil? || reply[:items].empty?
+        @logger&.error("received reply items as nil or empty")
       else
-        reply["items"].each_with_object({}) do |item|
-          @cache[cache_key(item)] = getOptimizedItem(item)
+        reply[:items].each_with_object({}) do |item|
+          if !@show_managed_fields
+            if !item[:metadata].nil? && !item[:metadata].empty? &&
+              !item[:metadata][:managedFields].nil? &&
+              !item[:metadata][:managedFields].empty?
+              item[:metadata][:managedFields] = nil
+            end
+          end
+          @cache[cache_key(item)] = item
         end
-        @started = reply["metadata"]["resourceVersion"]
+        @started = reply.dig(:metadata, :resourceVersion)
         @logger&.info("resourceVersion: #{@started}")
-        continuationToken = reply["metadata"]["continue"]
+        continuationToken = reply.dig(:metadata, :continue)
         while (!continuationToken.nil? && !continuationToken.empty?)
-          reply = @client.get_entities(nil, @resource_name, limit: @limit, continue: continuationToken)
+          reply = @client.get_entities(nil, @resource_name, limit: @limit, continue: continuationToken, raw: true)
           if reply.nil? || reply.empty?
-          elsif reply["items"].nil? || reply["items"].empty?
+          elsif reply[:items].nil? || reply[:items].empty?
           else
-            continuationToken =  reply["metadata"]["continue"]
-            reply["items"].each_with_object({}) do |item|
-              @cache[cache_key(item)] = getOptimizedItem(item)
+            continuationToken = reply.dig(:metadata, :continue)
+            reply[:items].each_with_object({}) do |item|
+              if !@show_managed_fields
+                if !item[:metadata].nil? && !item[:metadata].empty? &&
+                  !item[:metadata][:managedFields].nil? &&
+                  !item[:metadata][:managedFields].empty?
+                  item[:metadata][:managedFields] = nil
+                end
+              end
+              @cache[cache_key(item)] = item
             end
           end
         end
@@ -98,76 +115,28 @@ module Kubeclient
       end
 
       watcher.each do |notice|
-        case notice["type"]
+        case notice[:type]
         when 'ADDED', 'MODIFIED' then
-          item = notice["object"]
-          @cache[cache_key(item)] = getOptimizedItem(item)
+          item = notice[:object]
+          if !@show_managed_fields
+            if !item[:metadata].nil? && !item[:metadata].empty? &&
+              !item[:metadata][:managedFields].nil? &&
+              !item[:metadata][:managedFields].empty?
+              item[:metadata][:managedFields] = nil
+            end
+          end
+          @cache[cache_key(item)] = item
         when 'DELETED' then
-          @cache.delete(cache_key(notice["object"]))
+          @cache.delete(cache_key(notice[:object]))
         when 'ERROR'
           stop_reason = 'error'
           break
         else
-          @logger&.error("Unsupported event type #{notice["type"]}")
+          @logger&.error("Unsupported event type #{notice[:type]}")
         end
         @watching.each { |q| q << notice }
       end
       @logger&.info("watch restarted: #{stop_reason}")
-    end
-
-    def getOptimizedItem(resourceItem)
-      item = {}
-      # if !resourceItem["kind"].nil? && resourceItem["kind"] == "Pod"
-      # if !resourceItem["kind"].nil?
-        # @logger&.info("getOptimizedItem:before-metadata")
-        # item["apiVersion"] = resourceItem["apiVersion"]
-        # item["kind"] =  resourceItem["kind"]
-        item["metadata"] =  {}
-        if !resourceItem["metadata"].nil?
-              if !resourceItem["metadata"]["annotations"].nil?
-                item["metadata"]["annotations"] =  resourceItem["metadata"]["annotations"]
-              end
-              if !resourceItem["metadata"]["labels"].nil?
-                item["metadata"]["labels"] =  resourceItem["metadata"]["labels"]
-              end
-              if !resourceItem["metadata"]["ownerReferences"].nil?
-                # TODO - can be further optimized
-                item["metadata"]["ownerReferences"] =  resourceItem["metadata"]["ownerReferences"]
-              end
-              item["metadata"]["name"] =  resourceItem["metadata"]["name"]
-              item["metadata"]["namespace"] =  resourceItem["metadata"]["namespace"]
-              item["metadata"]["resourceVersion"] =  resourceItem["metadata"]["resourceVersion"]
-              item["metadata"]["uid"] =  resourceItem["metadata"]["uid"]
-              item["metadata"]["creationTimestamp"] =  resourceItem["metadata"]["creationTimestamp"]
-              if !resourceItem["metadata"]["deletionTimestamp"].nil?
-                item["metadata"]["deletionTimestamp"] = resourceItem["metadata"]["deletionTimestamp"]
-              end
-        end
-        item["spec"] =  {}
-        if !resourceItem["spec"].nil?
-          item["spec"]["containers"] =  []
-          if  !resourceItem["spec"]["containers"].nil?
-            resourceItem["spec"]["containers"].each do | container|
-              currentContainer = {}
-              currentContainer["name"] = container["name"]
-              currentContainer["resources"] = container["resources"]
-              item["spec"]["containers"].push(currentContainer)
-            end
-          end
-          item["spec"]["nodeName"] = ""
-          if !resourceItem["spec"]["nodeName"].nil?
-            item["spec"]["nodeName"] = resourceItem["spec"]["nodeName"]
-          end
-        end
-        item["status"] =  {}
-        if !resourceItem["status"].nil?
-          # TODO - can be further optimized
-          item["status"] =  resourceItem["status"]
-        end
-      return item
-      # end
-      # @logger&.info("getOptimizedItem:end")
-      # return resourceItem
     end
   end
 end
